@@ -15,7 +15,7 @@ from timm.models.layers import trunc_normal_
 import numpy as np
 from .token_transformer import Token_transformer
 from .token_performer import Token_performer
-from .transformer_block import Block, get_sinusoid_encoding
+from .transformer_block import Block, Block_HSIC, get_sinusoid_encoding
 
 def _cfg(url='', **kwargs):
     return {
@@ -121,7 +121,7 @@ class T2T_ViT(nn.Module):
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
         self.blocks = nn.ModuleList([
-            Block(
+            Block_HSIC(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer)
             for i in range(depth)])
@@ -154,6 +154,7 @@ class T2T_ViT(nn.Module):
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
     def forward_features(self, x):
+        activations = []
         B = x.shape[0]
         x = self.tokens_to_token(x)
 
@@ -163,15 +164,20 @@ class T2T_ViT(nn.Module):
         x = self.pos_drop(x)
 
         for blk in self.blocks:
-            x = blk(x)
+            (x, act) = blk(x)
+            activations.append(act)
+            activations.append(x)
 
         x = self.norm(x)
-        return x[:, 0]
+        return x[:, 0], activations
 
     def forward(self, x):
-        x = self.forward_features(x)
+        activations = []
+        x, act = self.forward_features(x)
+        activations.append(act)
         x = self.head(x)
-        return x
+        activations.append(x)
+        return x, activations
 
 @register_model
 def t2t_vit_7(pretrained=False, **kwargs): # adopt performer for tokens to token
