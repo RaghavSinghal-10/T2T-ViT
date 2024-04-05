@@ -93,7 +93,6 @@ class Block_HSIC(nn.Module):
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x, activation
 
-
 def get_sinusoid_encoding(n_position, d_hid):
     ''' Sinusoid position encoding table '''
 

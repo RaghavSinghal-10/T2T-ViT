@@ -18,6 +18,7 @@ from collections import OrderedDict
 from contextlib import suppress
 from datetime import datetime
 import models
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -31,6 +32,7 @@ from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy, JsdCro
 from timm.optim import create_optimizer
 from timm.scheduler import create_scheduler
 from timm.utils import ApexScaler, NativeScaler
+from hsic import *
 
 torch.backends.cudnn.benchmark = True
 _logger = logging.getLogger('train')
@@ -235,6 +237,9 @@ parser.add_argument('--tta', type=int, default=0, metavar='N',
 parser.add_argument("--local_rank", default=0, type=int)
 parser.add_argument('--use-multi-epochs-loader', action='store_true', default=False,
                     help='use the multi-epochs-loader to save time at the beginning of every epoch')
+
+parser.add_argument('--sigma', type=float, default=5.0, metavar='SIGMA',
+                    help='sigma for HSIC objective (default: 1.0)')
 
 try:
     from apex import amp
@@ -616,6 +621,11 @@ def train_epoch(
     last_idx = len(loader) - 1
     num_updates = epoch * len(loader)
     for batch_idx, (input, target) in enumerate(loader):
+
+        h_target = target.view(-1,1)
+        h_target = misc.to_categorical(h_target, num_classes=1000).float()
+        h_data = input.view(-1, np.prod(input.size()[1:]))
+    
         last_batch = batch_idx == last_idx
         data_time_m.update(time.time() - end)
         if not args.prefetcher:
@@ -626,8 +636,19 @@ def train_epoch(
             input = input.contiguous(memory_format=torch.channels_last)
 
         with amp_autocast():
-            output = model(input)
-            loss = loss_fn(output, target)
+            (output, hiddens) = model(input)
+
+            for hidden in hiddens:
+
+                
+                hx_l, hy_l = hsic_objective(
+                    hidden,
+                    h_target=h_target.float(),
+                    h_data=h_data,
+                    sigma=args.sigma,
+                    )
+            
+                loss = hx_l - args.lambda_y*hy_l
 
         if not args.distributed:
             losses_m.update(loss.item(), input.size(0))
