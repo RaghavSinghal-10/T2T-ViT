@@ -18,6 +18,8 @@ from collections import OrderedDict
 from contextlib import suppress
 from datetime import datetime
 import models
+from models.t2t_vit import *
+from models.t2t_vit_hsic import *
 import numpy as np
 
 import torch
@@ -46,9 +48,9 @@ parser.add_argument('-c', '--config', default='', type=str, metavar='FILE',
 parser = argparse.ArgumentParser(description='T2T-ViT Training and Evaluating')
 
 # Dataset / Model parameters
-parser.add_argument('data', metavar='DIR',
+parser.add_argument('--data', metavar='DIR', default='/raid/ee-udayan/uganguly/data/ImageNet', type=str,
                     help='path to dataset')
-parser.add_argument('--model', default='T2t_vit_14', type=str, metavar='MODEL',
+parser.add_argument('--model', default='T2t_vit_7_hsic', type=str, metavar='MODEL',
                     help='Name of model to train (default: "countception"')
 parser.add_argument('--pretrained', action='store_true', default=False,
                     help='Start with pretrained version of specified network (if avail)')
@@ -240,6 +242,8 @@ parser.add_argument('--use-multi-epochs-loader', action='store_true', default=Fa
 
 parser.add_argument('--sigma', type=float, default=5.0, metavar='SIGMA',
                     help='sigma for HSIC objective (default: 1.0)')
+parser.add_argument('--lambda_y', type=float, default=50, metavar='LAMBDA_Y',
+                    help='lambda for HSIC objective (default: 1.0)')
 
 try:
     from apex import amp
@@ -307,20 +311,22 @@ def main():
 
     torch.manual_seed(args.seed + args.rank)
 
-    model = create_model(
-        args.model,
-        pretrained=args.pretrained,
-        num_classes=args.num_classes,
-        drop_rate=args.drop,
-        drop_connect_rate=args.drop_connect,  # DEPRECATED, use drop_path
-        drop_path_rate=args.drop_path,
-        drop_block_rate=args.drop_block,
-        global_pool=args.gp,
-        bn_tf=args.bn_tf,
-        bn_momentum=args.bn_momentum,
-        bn_eps=args.bn_eps,
-        checkpoint_path=args.initial_checkpoint,
-        img_size=args.img_size)
+    # model = create_model(
+    #     args.model,
+    #     pretrained=args.pretrained,
+    #     num_classes=args.num_classes,
+    #     drop_rate=args.drop,
+    #     drop_connect_rate=args.drop_connect,  # DEPRECATED, use drop_path
+    #     drop_path_rate=args.drop_path,
+    #     drop_block_rate=args.drop_block,
+    #     global_pool=args.gp,
+    #     bn_tf=args.bn_tf,
+    #     bn_momentum=args.bn_momentum,
+    #     bn_eps=args.bn_eps,
+    #     checkpoint_path=args.initial_checkpoint,
+    #     img_size=args.img_size)
+
+    model = t2t_vit_7_hsic()
 
     if args.local_rank == 0:
         _logger.info('Model %s created, param count: %d' %
@@ -366,6 +372,8 @@ def main():
 
     optimizer = create_optimizer(args, model)
 
+    print("optimizer created")
+
     amp_autocast = suppress  # do nothing
     loss_scaler = None
     if use_amp == 'apex':
@@ -401,6 +409,7 @@ def main():
             resume=args.resume)
 
     if args.distributed:
+        print("distributed")
         if args.sync_bn:
             assert not args.split_bn
             try:
@@ -557,6 +566,7 @@ def main():
 
     try:  # train the model
         for epoch in range(start_epoch, num_epochs):
+            print("started training")
             if args.distributed:
                 loader_train.sampler.set_epoch(epoch)
 
@@ -638,30 +648,30 @@ def train_epoch(
         with amp_autocast():
             (output, hiddens) = model(input)
 
-            for hidden in hiddens:
-
-                
-                hx_l, hy_l = hsic_objective(
-                    hidden,
-                    h_target=h_target.float(),
-                    h_data=h_data,
-                    sigma=args.sigma,
-                    )
+        for hidden in hiddens:
             
-                loss = hx_l - args.lambda_y*hy_l
+            hx_l, hy_l = hsic_objective(
+                hidden,
+                h_target=h_target.float(),
+                h_data=h_data,
+                sigma=args.sigma,
+                )
+        
+            loss = hx_l - args.lambda_y*hy_l
 
-        if not args.distributed:
-            losses_m.update(loss.item(), input.size(0))
 
-        optimizer.zero_grad()
-        if loss_scaler is not None:
-            loss_scaler(
-                loss, optimizer, clip_grad=args.clip_grad, parameters=model.parameters(), create_graph=second_order)
-        else:
-            loss.backward(create_graph=second_order)
-            if args.clip_grad is not None:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad)
-            optimizer.step()
+            if not args.distributed:
+                losses_m.update(loss.item(), input.size(0))
+
+            optimizer.zero_grad()
+            if loss_scaler is not None:
+                loss_scaler(
+                    loss, optimizer, clip_grad=args.clip_grad, parameters=model.parameters(), create_graph=second_order)
+            else:
+                loss.backward(create_graph=second_order)
+                if args.clip_grad is not None:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad)
+                optimizer.step()
 
         torch.cuda.synchronize()
         if model_ema is not None:

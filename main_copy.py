@@ -18,6 +18,7 @@ from collections import OrderedDict
 from contextlib import suppress
 from datetime import datetime
 import models
+from models.t2t_vit import *
 
 import torch
 import torch.nn as nn
@@ -46,7 +47,7 @@ parser = argparse.ArgumentParser(description='T2T-ViT Training and Evaluating')
 # Dataset / Model parameters
 parser.add_argument('--data', default='/raid/ee-udayan/uganguly/data/ImageNet/', metavar='DIR',
                     help='path to dataset')
-parser.add_argument('--model', default='t2t_vit_14', type=str, metavar='MODEL',
+parser.add_argument('--model', default='T2t_vit_14', type=str, metavar='MODEL',
                     help='Name of model to train (default: "countception"')
 parser.add_argument('--pretrained', action='store_true', default=False,
                     help='Start with pretrained version of specified network (if avail)')
@@ -302,20 +303,22 @@ def main():
 
     torch.manual_seed(args.seed + args.rank)
 
-    model = create_model(
-        args.model,
-        pretrained=args.pretrained,
-        num_classes=args.num_classes,
-        drop_rate=args.drop,
-        drop_connect_rate=args.drop_connect,  # DEPRECATED, use drop_path
-        drop_path_rate=args.drop_path,
-        drop_block_rate=args.drop_block,
-        global_pool=args.gp,
-        bn_tf=args.bn_tf,
-        bn_momentum=args.bn_momentum,
-        bn_eps=args.bn_eps,
-        checkpoint_path=args.initial_checkpoint,
-        img_size=args.img_size)
+    # model = create_model(
+    #     args.model,
+    #     pretrained=args.pretrained,
+    #     num_classes=args.num_classes,
+    #     drop_rate=args.drop,
+    #     drop_connect_rate=args.drop_connect,  # DEPRECATED, use drop_path
+    #     drop_path_rate=args.drop_path,
+    #     drop_block_rate=args.drop_block,
+    #     global_pool=args.gp,
+    #     bn_tf=args.bn_tf,
+    #     bn_momentum=args.bn_momentum,
+    #     bn_eps=args.bn_eps,
+    #     checkpoint_path=args.initial_checkpoint,
+    #     img_size=args.img_size)
+
+    model = t2t_vit_14()
 
     if args.local_rank == 0:
         _logger.info('Model %s created, param count: %d' %
