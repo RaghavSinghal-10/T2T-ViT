@@ -35,6 +35,7 @@ from timm.optim import create_optimizer
 from timm.scheduler import create_scheduler
 from timm.utils import ApexScaler, NativeScaler
 from hsic import *
+import misc
 
 torch.backends.cudnn.benchmark = True
 _logger = logging.getLogger('train')
@@ -50,7 +51,7 @@ parser = argparse.ArgumentParser(description='T2T-ViT Training and Evaluating')
 # Dataset / Model parameters
 parser.add_argument('--data', metavar='DIR', default='/raid/ee-udayan/uganguly/data/ImageNet', type=str,
                     help='path to dataset')
-parser.add_argument('--model', default='T2t_vit_7_hsic', type=str, metavar='MODEL',
+parser.add_argument('--model', default='t2t_vit_7_hsic', type=str, metavar='MODEL',
                     help='Name of model to train (default: "countception"')
 parser.add_argument('--pretrained', action='store_true', default=False,
                     help='Start with pretrained version of specified network (if avail)')
@@ -630,10 +631,11 @@ def train_epoch(
     end = time.time()
     last_idx = len(loader) - 1
     num_updates = epoch * len(loader)
+    
     for batch_idx, (input, target) in enumerate(loader):
 
-        h_target = target.view(-1,1)
-        h_target = misc.to_categorical(h_target, num_classes=1000).float()
+        h_target = target
+        #h_target = torch.squeeze(torch.eye(1000, device=args.device)[h_target]).float()
         h_data = input.view(-1, np.prod(input.size()[1:]))
     
         last_batch = batch_idx == last_idx
@@ -649,6 +651,16 @@ def train_epoch(
             (output, hiddens) = model(input)
 
         for hidden in hiddens:
+
+            hidden = torch.stack(hidden)
+
+            # change shape from [a,b,c,d] to [b,a,c,d]
+            hidden = hidden.permute(1, 0, 2, 3)
+
+            if len(hidden.size()) > 2:
+                # reshape from [b,a,c,d] to [b,a*c*d]
+                hidden = hidden.reshape(hidden.size(0), -1)
+                # hidden = hidden.view(-1, np.prod(hidden.size()[1:]))
             
             hx_l, hy_l = hsic_objective(
                 hidden,

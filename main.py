@@ -18,6 +18,8 @@ from collections import OrderedDict
 from contextlib import suppress
 from datetime import datetime
 import models
+from models.t2t_vit import *
+
 
 import torch
 import torch.nn as nn
@@ -302,20 +304,22 @@ def main():
 
     torch.manual_seed(args.seed + args.rank)
 
-    model = create_model(
-        args.model,
-        pretrained=args.pretrained,
-        num_classes=args.num_classes,
-        drop_rate=args.drop,
-        drop_connect_rate=args.drop_connect,  # DEPRECATED, use drop_path
-        drop_path_rate=args.drop_path,
-        drop_block_rate=args.drop_block,
-        global_pool=args.gp,
-        bn_tf=args.bn_tf,
-        bn_momentum=args.bn_momentum,
-        bn_eps=args.bn_eps,
-        checkpoint_path=args.initial_checkpoint,
-        img_size=args.img_size)
+    model = t2t_vit_7()
+
+    # model = create_model(
+    #     args.model,
+    #     pretrained=args.pretrained,
+    #     num_classes=args.num_classes,
+    #     drop_rate=args.drop,
+    #     drop_connect_rate=args.drop_connect,  # DEPRECATED, use drop_path
+    #     drop_path_rate=args.drop_path,
+    #     drop_block_rate=args.drop_block,
+    #     global_pool=args.gp,
+    #     bn_tf=args.bn_tf,
+    #     bn_momentum=args.bn_momentum,
+    #     bn_eps=args.bn_eps,
+    #     checkpoint_path=args.initial_checkpoint,
+    #     img_size=args.img_size)
 
     if args.local_rank == 0:
         _logger.info('Model %s created, param count: %d' %

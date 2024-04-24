@@ -8,6 +8,7 @@ T2T-ViT
 """
 import torch
 import torch.nn as nn
+from torch import inf
 
 from timm.models.helpers import load_pretrained
 from timm.models.registry import register_model
